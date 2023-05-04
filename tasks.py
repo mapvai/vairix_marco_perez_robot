@@ -98,7 +98,7 @@ def load_all_available_news():
             browser.click_element(SHOW_MORE_BUTTON_LOCATOR)
             attempt = 0
         except Exception as e:
-            if "ElementNotFound" == type(e).__name__ or "StaleElementReferenceException" == type(e).__name__:
+            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
                 attempt += 1
                 time.sleep(WAIT_FOR_ELEMENT_TIME)
             else:
@@ -131,7 +131,7 @@ def get_text_retry(xpath):
             text = browser.get_text(xpath)
             break
         except Exception as e:
-            if "ElementNotFound" == type(e).__name__ or "StaleElementReferenceException" == type(e).__name__:
+            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
                 attempt += 1
                 time.sleep(WAIT_FOR_ELEMENT_TIME)
             else:
@@ -147,7 +147,7 @@ def get_element_attribute_retry(xpath, attribute):
             text = browser.get_element_attribute(xpath, attribute)
             break
         except Exception as e:
-            if "ElementNotFound" == type(e).__name__ or "StaleElementReferenceException" == type(e).__name__:
+            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
                 attempt += 1
                 time.sleep(WAIT_FOR_ELEMENT_TIME)
             else:
