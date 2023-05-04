@@ -44,11 +44,15 @@ def get_search_configuration_from_work_item_or_environment():
             'No work item present, getting search data from config file')
 
     if variables:
-        mapped_vars = {
-            'search_phrase': variables['search_phrase'],
-            'sections': ast.literal_eval(variables['sections']),
-            'number_of_months': variables['number_of_months']
-        }
+        try:
+            mapped_vars = {
+                'search_phrase': variables['search_phrase'],
+                'sections': ast.literal_eval(variables['sections']),
+                'number_of_months': variables['number_of_months']
+            }
+        except Exception as e:
+            logger.error(f"Json specified in Work Item payload have invalid format: {e} with {variables}")
+            raise e
 
         return mapped_vars
     else:
