@@ -1,4 +1,7 @@
-from RPA.Browser.Selenium import Selenium
+from RPA.Browser.Selenium import Selenium, ElementNotFound
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
+from threading import Thread, current_thread
+from queue import Queue
 from RPA.Robocorp.WorkItems import WorkItems
 from RPA.Excel.Files import Files
 from RPA.HTTP import HTTP
@@ -6,7 +9,7 @@ import datetime
 import time
 import ast
 import os
-import resources.nyt_news_module as newsm
+import resources.nyt_news_module as news_module
 from locators.nyt_locators import *
 from config import *
 from resources.logger import logger
@@ -16,6 +19,7 @@ http = HTTP()
 
 WAIT_FOR_ELEMENT_TIME = 0.2
 MAX_ATTEMPTS = 5
+NUM_THREADS = 10
 
 
 def extract_latest_news_from_ny_times_and_save_in_excel():
@@ -28,7 +32,7 @@ def extract_latest_news_from_ny_times_and_save_in_excel():
     all_news_list = scrape_all_news()
     browser.close_browser()
     download_pictures_and_save_pictures_name(all_news_list)
-    news_to_excel_list = newsm.get_excel_table_from_news(
+    news_to_excel_list = news_module.get_excel_table_from_news(
         all_news_list, variables['search_phrase'])
     export_all_news_as_excel(news_to_excel_list, SHEET_NAME, EXCEL_FILE_NAME)
 
@@ -101,13 +105,12 @@ def load_all_available_news():
         try:
             browser.click_element(SHOW_MORE_BUTTON_LOCATOR)
             attempt = 0
+        except (ElementNotFound, StaleElementReferenceException, NoSuchElementException) as e:
+            attempt += 1
+            time.sleep(WAIT_FOR_ELEMENT_TIME)
         except Exception as e:
-            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
-                attempt += 1
-                time.sleep(WAIT_FOR_ELEMENT_TIME)
-            else:
-                logger.warning(
-                    'Error attempting to click on SHOW_MORE_BUTTON', e)
+            logger.warning('Error attempting to click on SHOW_MORE_BUTTON', e)
+            raise e
 
 
 def scrape_all_news():
@@ -122,7 +125,7 @@ def scrape_all_news():
         description = get_text_retry(DescriptionRelativeLocatorXpath)
         ImageRelativeLocatorXpath = IMAGE_RELATIVE_LOCATOR.format(i=i)
         picture_url = get_element_attribute_retry(ImageRelativeLocatorXpath, 'src')
-        news = newsm.construct_news(date, title, description, picture_url)
+        news = news_module.construct_news(date, title, description, picture_url)
         all_news_list.append(news)
     return all_news_list
 
@@ -134,12 +137,12 @@ def get_text_retry(xpath):
         try:
             text = browser.get_text(xpath)
             break
+        except (ElementNotFound, StaleElementReferenceException, NoSuchElementException) as e:
+            attempt += 1
+            time.sleep(WAIT_FOR_ELEMENT_TIME)
         except Exception as e:
-            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
-                attempt += 1
-                time.sleep(WAIT_FOR_ELEMENT_TIME)
-            else:
-                raise e
+            logger.error('Error getting text', e)
+            raise e
     return text
 
 
@@ -150,32 +153,48 @@ def get_element_attribute_retry(xpath, attribute):
         try:
             text = browser.get_element_attribute(xpath, attribute)
             break
+        except (ElementNotFound, StaleElementReferenceException, NoSuchElementException) as e:
+            attempt += 1
+            time.sleep(WAIT_FOR_ELEMENT_TIME)
         except Exception as e:
-            if type(e).__name__ in ["ElementNotFound", "StaleElementReferenceException"]:
-                attempt += 1
-                time.sleep(WAIT_FOR_ELEMENT_TIME)
-            else:
-                raise e
+            logger.error('Error getting element attribute', e)
+            raise e
     return text
 
 
 def download_pictures_and_save_pictures_name(news_list):
+    q = Queue()
+    
+    for i in range(NUM_THREADS):
+        thread = Thread(target=download_pictures_and_save_pictures_name_worker, args=(q,))
+        thread.daemon = True
+        thread.start()
+
     for news in news_list:
-        picture_url = newsm.get_picture_url_from_news(news)
+        q.put(news)
+
+    q.join()
+        
+
+def download_pictures_and_save_pictures_name_worker(q):
+    while True:
+        news = q.get()
+
+        picture_url = news_module.get_picture_url_from_news(news)
         picture_name = get_picture_name()
         picture_path = os.path.join(OUTPUT_DIR, picture_name)
         response = http.download(picture_url, picture_path)
         if response.status_code == 200:
-            newsm.set_picture_name_to_news(news, picture_name)
+            news_module.set_picture_name_to_news(news, picture_name)
         else:
-            newsm.set_picture_name_to_news(news, 'Picture fails to download')
+            news_module.set_picture_name_to_news(news, 'Picture fails to download')
             logger.error('Picture fails to download', news, response)
-
+        q.task_done()
 
 def get_picture_name():
     now = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
     picture_name = str(int(datetime.datetime.strptime(
-        now, "%Y-%m-%d-%H-%M-%S-%f").timestamp()*1000)) + ".jpg"
+        now, "%Y-%m-%d-%H-%M-%S-%f").timestamp()*1000)) + '_' + current_thread().name.split('-')[-1] + ".jpg"
     return picture_name
 
 

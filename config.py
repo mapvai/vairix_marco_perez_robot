@@ -3,6 +3,6 @@ EXCEL_FILE_NAME= 'NYT_Exports.xlsx'
 SHEET_NAME= 'News'
 OUTPUT_DIR = "output"
 
-LOCAL_SEARCH_PHRASE= 'Elon Musk Tesla California'
+LOCAL_SEARCH_PHRASE= 'Elon Musk Tesla'
 LOCAL_SECTIONS= ['Business', 'Technology']
 LOCAL_NUMBER_OF_MONTHS= 1
